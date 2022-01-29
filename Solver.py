@@ -44,6 +44,20 @@ class SwapMove(object):
         self.costChangeSecondRt = None
         self.moveCost = 10 ** 9
 
+
+class ProfitableSwapMove(object):
+    def __init__(self):
+        self.routePosition = None
+        self.routeNode = None
+        self.unroutedNode = None
+        self.moveCost = None
+    def Initialize(self):
+        self.routePosition = None
+        self.routeNode = None
+        self.unroutedNode = None
+        self.moveCost = 10 ** 9
+
+
 class CustomerInsertion(object):
     def __init__(self):
         self.customer = None
@@ -160,10 +174,11 @@ class Solver:
         rm = RelocationMove()
         sm = SwapMove()
         bi = CustomerInsertionAllPositions()
+        ps = ProfitableSwapMove()
 
         while terminationCondition is False:
 
-            self.InitializeOperators(rm, sm)
+            self.InitializeOperators(rm, sm, ps)
             SolDrawer.draw(localSearchIterator, self.sol, self.allNodes)
 
             # Relocations
@@ -189,6 +204,14 @@ class Solver:
                     self.ApplyCustomerInsertionAllPositions(bi)
                 else:
                     terminationCondition = True
+            # ProfitableSwaps
+            elif operator == 3:
+                self.FindBestProfitableSwapMove(ps)
+                if ps.routePosition is not None:
+                    if ps.moveCost < 0:
+                        self.ApplyProfitSwapMove(ps)
+                    else:
+                        terminationCondition = True
             print("Local Search test")
             self.TestSolution()
 
@@ -202,15 +225,29 @@ class Solver:
     def VND(self):
         self.bestSolution = self.cloneSolution(self.sol)
         VNDIterator = 0
-        kmax = 2
+        kmax = 3
         rm = RelocationMove()
         sm = SwapMove()
         bi = CustomerInsertionAllPositions()
+        ps = ProfitableSwapMove()
         k = 0
         draw = False
+        appliedProfitable = False
 
         while k <= kmax:
-            self.InitializeOperators(rm, sm)
+            self.InitializeOperators(rm, sm, ps)
+            if k == 3:
+                appliedProfitable=True
+                self.FindBestProfitableSwapMove(ps)
+                if ps.routePosition is not None and ps.moveCost < 0:
+                    self.ApplyProfitSwapMove(ps)
+                    if draw:
+                        SolDrawer.draw(VNDIterator, self.sol, self.allNodes)
+                    VNDIterator = VNDIterator + 1
+                    self.searchTrajectory.append(self.sol.cost)
+                    k = 0
+                else:
+                    k += 1
             if k == 2:
                 self.FindBestRelocationMove(rm)
                 if rm.originRoutePosition is not None and rm.moveCost < 0:
@@ -249,6 +286,8 @@ class Solver:
             if (self.sol.cost < self.bestSolution.cost):
                 self.bestSolution = self.cloneSolution(self.sol)
 
+        if appliedProfitable is True:
+            print("Applied profitable swap also")
         SolDrawer.draw('final_vnd', self.bestSolution, self.allNodes)
         SolDrawer.drawTrajectory(self.searchTrajectory)
 
@@ -365,6 +404,32 @@ class Solver:
                         if moveCost < sm.moveCost and abs(moveCost) > 0.0001:
                             self.StoreBestSwapMove(firstRouteIndex, secondRouteIndex, firstNodeIndex, secondNodeIndex, moveCost, costChangeFirstRoute, costChangeSecondRoute, sm)
 
+    def FindBestProfitableSwapMove(self, ps):
+        for firstRouteIndex in range(0, len(self.sol.routes)):
+            rt1:Route = self.sol.routes[firstRouteIndex]
+            for cust in range (0, len(self.customers)):
+                candidateCust = self.customers[cust]
+                if candidateCust.isRouted is True:
+                    continue
+                for firstNodeIndex in range (1, len(rt1.sequenceOfNodes) - 1):
+                    a1 = rt1.sequenceOfNodes[firstNodeIndex - 1]
+                    b1 = rt1.sequenceOfNodes[firstNodeIndex]
+                    c1 = rt1.sequenceOfNodes[firstNodeIndex + 1]
+
+                    moveCost = None
+
+                    costRemoved = self.distanceMatrix[a1.ID][b1.ID] + self.distanceMatrix[b1.ID][c1.ID] + b1.service_time
+                    costAdded = self.distanceMatrix[a1.ID][candidateCust.ID] + self.distanceMatrix[candidateCust.ID][c1.ID] + candidateCust.service_time
+
+                    moveCost = costAdded - costRemoved
+
+                    if rt1.load + moveCost > rt1.capacity:
+                        continue
+                    if moveCost < ps.moveCost and abs(moveCost) > 0.0001:
+                        self.StoreBestProfitSwapMove(firstRouteIndex, firstNodeIndex, cust, moveCost, ps)
+
+
+
     def ApplyRelocationMove(self, rm: RelocationMove):
 
         oldCost = self.CalculateTotalCost(self.sol)
@@ -414,6 +479,24 @@ class Solver:
 
        self.sol.cost += sm.moveCost
        print("Swap move test")
+       self.TestSolution()
+    
+    def ApplyProfitSwapMove(self, ps):
+       rt1 = self.sol.routes[ps.routePosition]
+       b1 = rt1.sequenceOfNodes[ps.routeNode]
+       b2 = self.customers[ps.unroutedNode]
+       
+       self.customers[ps.unroutedNode].isRouted = True
+       rt1.sequenceOfNodes[ps.routeNode].isRouted = False
+       rt1.sequenceOfNodes[ps.routeNode] = b2
+       
+       rt1.profit += b2.profit - b1.profit
+
+       # Something's off here
+       rt1.load = rt1.load + ps.moveCost
+
+       self.sol.cost += ps.moveCost
+       print("Profit Swap move test")
        self.TestSolution()
 
     def ReportSolution(self, sol):
@@ -469,6 +552,12 @@ class Solver:
         sm.costChangeSecondRt = costChangeSecondRoute
         sm.moveCost = moveCost
 
+    def StoreBestProfitSwapMove(self, routeIndex, nodeIndex, customerNodeIndex, moveCost, ps):
+        ps.routePosition = routeIndex
+        ps.routeNode = nodeIndex
+        ps.unroutedNode = customerNodeIndex
+        ps.moveCost = moveCost
+
     def CalculateTotalCost(self, sol):
         c = 0
         for i in range (0, len(sol.routes)):
@@ -479,10 +568,10 @@ class Solver:
                 c += self.distanceMatrix[a.ID][b.ID]
         return c
 
-    def InitializeOperators(self, rm, sm):
+    def InitializeOperators(self, rm, sm, ps):
         rm.Initialize()
         sm.Initialize()
-        
+        ps.Initialize()
 
     
     def CapacityIsViolated(self, rt1, nodeInd1, rt2, nodeInd2):

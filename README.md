@@ -44,3 +44,17 @@ The idea behind the solution is:
 #### Customer Insertion
 
 - Simply apply the insertion proccess once more (covers only non Routed customers)
+
+#### Customer Profitable Swap (incomplete/faulty)
+
+The process goes as follows:
+
+- Iterate over the solution routes
+- Iterate over the customers (unrouted only) until you find the best swap
+- Extract existing customer from route and add newly picked customer in
+- Update both customers' statuses
+  - Newly added to isRouted
+  - Removed to unRouted
+- Update route costs, load and profit accordingly
+
+I observed there were some errors in the route Load tests. I am printing the results of each route on test.
