@@ -18,7 +18,7 @@ class Model:
         self.allNodes.append(depot)
 
         self.capacity = 150
-        totalCustomers = 30
+        totalCustomers = 300
         availableTrucks = 5
         for i in range (0, totalCustomers):
             x = random.randint(0, 100)
