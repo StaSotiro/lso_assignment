@@ -1,6 +1,7 @@
 # lso_assignment
 
 LSO assignment Winter semester 21
+Student: Stavros Sotiropoulos (ID: p2822018)
 
 ### Model Creation
 
